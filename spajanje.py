@@ -6,7 +6,6 @@ from PIL import Image, ImageDraw, ImageFont
 import imageio
 import moviepy.editor as mpy
 from moviepy.audio.fx import audio_loop
-from playsound import playsound
 
 # KONFIG
 W, H = 1920, 1080
@@ -18,7 +17,6 @@ end_t = 5
 fade_t = 5
 pixels = 5
 END_IMAGE = "end_graphic.png"
-CLICK_SOUND = "click_sound.mp3"
 
 class App:
     def __init__(self, root):
@@ -54,7 +52,6 @@ class App:
         p = filedialog.askopenfilename(filetypes=[("PNG","*.png")]); self.logo = p
 
     def start(self):
-        if os.path.exists(CLICK_SOUND): threading.Thread(target=lambda: playsound(CLICK_SOUND),daemon=True).start()
         self.status.config(text="Pokrenuto..."); self.btn.config(state="disabled")
         threading.Thread(target=self.make).start()
 
