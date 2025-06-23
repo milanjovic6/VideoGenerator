@@ -80,7 +80,8 @@ class App:
         base = W//2 - sum(pad(ws[i]) for i in range(3))*0.5
         dirs=["bottom","top","bottom"]
         efr=int(static_t*fps)
-        static=Image.new("RGB",(W,H),blk)
+        # create base frame filled with black color
+        static=Image.new("RGB", (W, H), (0, 0, 0))
         for i in range(3):
             im, w = imlist[i], ws[i]
             x = base + sum(pad(ws[j]) for j in range(i))
@@ -97,7 +98,8 @@ class App:
         full=sum(pad(w) for w in ws)
         frames=int((full+W)/pixels)
         for i in range(frames+1):
-            fr=Image.new("RGB",(W,H),blk)
+            # start scrolling frame with black background
+            fr=Image.new("RGB", (W, H), (0, 0, 0))
             xs=W - i*pixels
             # paste all images scrolling
             x=xs
@@ -110,7 +112,8 @@ class App:
         self.log("End...")
         font = ImageFont.truetype("arial.ttf",60) if os.path.exists("arial.ttf") else ImageFont.load_default()
         for _ in range(int(end_t*fps)):
-            fr=Image.new("RGB",(W,H),blk)
+            # end frame with black background
+            fr=Image.new("RGB", (W, H), (0, 0, 0))
             if self.var_text.get():
                 d=ImageDraw.Draw(fr); t="Like, Share & Subscribe"
                 tw,th=d.textsize(t,font=font)
