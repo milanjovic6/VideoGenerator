@@ -1,141 +1,164 @@
-import os, webbrowser, threading
+import os
 import numpy as np
-from datetime import datetime
-from tkinter import Tk, Label, Entry, Button, Checkbutton, BooleanVar, filedialog
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 import imageio
-import moviepy.editor as mpy
-from moviepy.audio.fx import audio_loop
+import tkinter as tk
+from tkinter import filedialog
+import threading
+import datetime
+import webbrowser
 
-# KONFIG
-W, H = 1920, 1080
-P = 2
+# Podešavanja
+video_width = 1920
+video_height = 1080
+padding = 2
+pad_color = (255, 255, 255)
+bg_color = (0, 0, 0)
 fps = 30
-intro = 2
-static_t = 3
-end_t = 5
-fade_t = 5
-pixels = 5
-END_IMAGE = "end_graphic.png"
+pixels_per_frame = 3
+intro_duration = 0            # Crni ekran na početku u sekundama
+end_duration = 5              # Crni ekran na kraju u sekundama
+entry_duration = 45           # Broj frejmova za animaciju prve tri slike
+output_folder_name = "video"
 
-class App:
+class VideoApp:
     def __init__(self, root):
-        self.folder = ""
-        self.music = ""
-        self.logo = ""
         self.root = root
-        root.title("Scroll Generator")
-        Label(root, text="Folder slika:").pack()
-        self.e = Entry(root, width=60); self.e.pack()
-        Button(root, text="Izaberi", command=self.choose).pack()
-        self.var_music = BooleanVar(); self.var_text = BooleanVar(); self.var_water = BooleanVar()
-        Checkbutton(root, text="Muzika", var=self.var_music).pack()
-        Checkbutton(root, text="Like/Share text", var=self.var_text).pack()
-        Checkbutton(root, text="Watermark logo", var=self.var_water).pack()
-        Button(root, text="MP3", command=self.choose_music).pack()
-        Button(root, text="Logo PNG", command=self.choose_logo).pack()
-        self.btn = Button(root, text="START", bg="green", fg="white", font=("Arial",14,"bold"), command=self.start)
-        self.btn.pack(pady=10)
-        self.status = Label(root, text="", fg="green"); self.status.pack()
-        self.open_btn = Button(root, text="Otvori video", command=self.open_vid, state="disabled")
-        self.open_btn.pack()
-        self.outpath = ""
+        self.root.title("Video Generator")
 
-    def choose(self):
-        f= filedialog.askdirectory()
-        self.e.delete(0,'end'); self.e.insert(0,f)
+        tk.Label(root, text="Folder sa slikama:").pack()
+        self.entry_folder = tk.Entry(root, width=60)
+        self.entry_folder.pack()
+        tk.Button(root, text="Izaberi folder", command=self.choose_folder).pack()
 
-    def choose_music(self):
-        p = filedialog.askopenfilename(filetypes=[("MP3","*.mp3")]); self.music = p
+        self.btn_start = tk.Button(root, text="START", bg="green", fg="white", font=("Arial", 14, "bold"), command=self.start)
+        self.btn_start.pack(pady=10)
 
-    def choose_logo(self):
-        p = filedialog.askopenfilename(filetypes=[("PNG","*.png")]); self.logo = p
+        self.btn_open = tk.Button(root, text="Otvori video", command=self.open_video, state=tk.DISABLED)
+        self.btn_open.pack()
+
+        self.status = tk.Label(root, text="", fg="blue")
+        self.status.pack()
+
+        self.generated_video_path = None
+
+    def choose_folder(self):
+        folder = filedialog.askdirectory()
+        if folder:
+            self.entry_folder.delete(0, tk.END)
+            self.entry_folder.insert(0, folder)
 
     def start(self):
-        self.status.config(text="Pokrenuto..."); self.btn.config(state="disabled")
-        threading.Thread(target=self.make).start()
+        self.status.config(text="⏳ Generisanje u toku...")
+        self.btn_start.config(state=tk.DISABLED)
+        threading.Thread(target=self.generate_video).start()
 
-    def log(self, msg): print(msg); self.status.config(text=msg); self.root.update()
+    def open_video(self):
+        if self.generated_video_path:
+            webbrowser.open(self.generated_video_path)
 
-    def open_vid(self):
-        if os.path.exists(self.outpath): webbrowser.open(self.outpath)
+    def log(self, msg):
+        print(msg)
+        self.status.config(text=msg)
+        self.root.update()
 
-    def make(self):
-        fldr=self.e.get()
-        imgs = sorted([f for f in os.listdir(fldr) if f.lower().endswith((".jpg",".png",".jpeg"))])
-        if len(imgs)<4: self.log("Molim min. 4 slike."); self.btn.config(state="normal"); return
-        odir=os.path.join(fldr,"video"); os.makedirs(odir,exist_ok=True)
-        fn=os.path.join(odir,f"panorama_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.mp4")
-        imlist, ws = [], []
-        for fnm in imgs:
-            im=Image.open(os.path.join(fldr,fnm)).convert("RGB")
-            sc=H/im.height; nw=int(im.width*sc); im=im.resize((nw,H))
-            imlist.append(im); ws.append(nw)
+    def generate_video(self):
+        import moviepy.editor as mpy
 
-        pad=lambda w: w+P
-        wv=imageio.get_writer(fn,fps=fps)
-        blk = np.zeros((H,W,3),dtype=np.uint8)
-        for _ in range(int(intro*fps)): wv.append_data(blk)
-        self.log("Ulazak 3 slike...")
-        base = W//2 - sum(pad(ws[i]) for i in range(3))*0.5
-        dirs=["bottom","top","bottom"]
-        efr=int(static_t*fps)
-        # create base frame filled with black color
-        static=Image.new("RGB", (W, H), (0, 0, 0))
-        for i in range(3):
-            im, w = imlist[i], ws[i]
-            x = base + sum(pad(ws[j]) for j in range(i))
-            for f in range(efr):
-                fr=static.copy()
-                y = (H+10)*(1-f/efr) if dirs[i]=="bottom" else -(H+10)*(1-f/efr)
-                fr.paste(im,(int(x),int(y)))
-                d=ImageDraw.Draw(fr); d.rectangle([int(x)+w,0,int(x)+w+P,H],fill=(255,255,255))
-                wv.append_data(np.array(fr))
-            static.paste(im,(int(x),0))
-            d=ImageDraw.Draw(static); d.rectangle([int(x)+w,0,int(x)+w+P,H],fill=(255,255,255))
-        for _ in range(efr): wv.append_data(np.array(static))
-        self.log("Scroll...")
-        full=sum(pad(w) for w in ws)
-        frames=int((full+W)/pixels)
-        for i in range(frames+1):
-            # start scrolling frame with black background
-            fr=Image.new("RGB", (W, H), (0, 0, 0))
-            xs=W - i*pixels
-            # paste all images scrolling
-            x=xs
-            for im,w in zip(imlist,ws):
-                if x+w>0 and x< W:
-                    fr.paste(im,(int(x),0))
-                    d=ImageDraw.Draw(fr); d.rectangle([int(x)+w,0,int(x)+w+P,H],fill=(255,255,255))
-                x+=pad(w)
-            wv.append_data(np.array(fr))
-        self.log("End...")
-        font = ImageFont.truetype("arial.ttf",60) if os.path.exists("arial.ttf") else ImageFont.load_default()
-        for _ in range(int(end_t*fps)):
-            # end frame with black background
-            fr=Image.new("RGB", (W, H), (0, 0, 0))
-            if self.var_text.get():
-                d=ImageDraw.Draw(fr); t="Like, Share & Subscribe"
-                tw,th=d.textsize(t,font=font)
-                d.text(((W-tw)//2,(H-th)//2),t,fill=(255,255,255),font=font)
-            if os.path.exists(END_IMAGE):
-                gi=Image.open(END_IMAGE).convert("RGBA")
-                w2,h2=gi.size; gi=gi.resize((w2*2,h2*2))
-                fr.paste(gi,((W-(w2*2))//2,(H-(h2*2))//2),gi)
-            wv.append_data(np.array(fr))
-        wv.close()
-        self.outpath=fn
-        if self.var_music.get() and os.path.exists(self.music):
-            self.log("Muzika...")
-            vc=mpy.VideoFileClip(fn)
-            ac=mpy.AudioFileClip(self.music)
-            if ac.duration < vc.duration: ac = audio_loop(ac, duration=vc.duration)
-            ac = ac.audio_fadeout(fade_t)
-            fn2=fn.replace(".mp4","_audio.mp4")
-            vc.set_audio(ac).write_videofile(fn2, codec="libx264", audio_codec="aac")
-            self.outpath=fn2
-        self.log("Gotovo")
-        self.btn.config(state="normal"); self.open_btn.config(state="normal")
+        folder = self.entry_folder.get()
+        if not folder:
+            self.log("⚠️ Niste izabrali folder.")
+            self.btn_start.config(state=tk.NORMAL)
+            return
 
-if __name__=="__main__":
-    root=Tk(); App(root); root.mainloop()
+        image_files = sorted([
+            f for f in os.listdir(folder)
+            if f.lower().endswith((".jpg", ".png", ".jpeg"))
+        ])
+
+        images = []
+        widths = []
+
+        for file in image_files:
+            img = Image.open(os.path.join(folder, file)).convert("RGB")
+            scale = video_height / img.height
+            new_width = int(img.width * scale)
+            img = img.resize((new_width, video_height))
+            images.append(img)
+            widths.append(new_width)
+
+        def get_padded_width(w):
+            return w + padding
+
+        output_folder = os.path.join(folder, output_folder_name)
+        os.makedirs(output_folder, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        output_path = os.path.join(output_folder, f"panorama_output_{timestamp}.mp4")
+
+        writer = imageio.get_writer(output_path, fps=fps)
+
+        if intro_duration > 0:
+            black = np.zeros((video_height, video_width, 3), dtype=np.uint8)
+            for _ in range(intro_duration * fps):
+                writer.append_data(black)
+
+        self.log("🗳️ Animiram prve 3 slike...")
+
+        directions = ["bottom", "top", "bottom"]
+        static_frame = Image.new("RGB", (video_width, video_height), bg_color)
+        x_base = video_width // 2 - sum(get_padded_width(widths[i]) for i in range(3)) // 2
+
+        for idx in range(3):
+            img = images[idx]
+            w = widths[idx]
+            x_pos = x_base + sum(get_padded_width(widths[i]) for i in range(idx))
+            for f in range(entry_duration):
+                frame = static_frame.copy()
+                if directions[idx] == "bottom":
+                    y_pos = video_height - int((f / entry_duration) * video_height)
+                else:
+                    y_pos = -img.height + int((f / entry_duration) * video_height)
+                frame.paste(img, (int(x_pos), int(y_pos)))
+                writer.append_data(np.array(frame))
+            static_frame.paste(img, (int(x_pos), 0))
+            draw = ImageDraw.Draw(static_frame)
+            draw.rectangle([int(x_pos) + w, 0, int(x_pos) + w + padding, video_height], fill=pad_color)
+
+        self.log("🔁 Scroll...")
+
+        scroll_images = images
+        scroll_widths = widths
+        total_scroll_width = sum(get_padded_width(w) for w in scroll_widths)
+        scroll_frames = (total_scroll_width + video_width) // pixels_per_frame
+
+        for i in range(scroll_frames + 1):
+            frame = Image.new("RGB", (video_width, video_height), bg_color)
+            x = video_width - i * pixels_per_frame
+            for img, width in zip(scroll_images, scroll_widths):
+                if x + width < 0:
+                    x += get_padded_width(width)
+                    continue
+                if x > video_width:
+                    x += get_padded_width(width)
+                    continue
+                frame.paste(img, (int(x), 0))
+                draw = ImageDraw.Draw(frame)
+                draw.rectangle([int(x) + width, 0, int(x) + width + padding, video_height], fill=pad_color)
+                x += get_padded_width(width)
+            writer.append_data(np.array(frame))
+
+        self.log("⏸️ Pauza na kraju...")
+        black = np.zeros((video_height, video_width, 3), dtype=np.uint8)
+        for _ in range(end_duration * fps):
+            writer.append_data(black)
+
+        writer.close()
+        self.generated_video_path = output_path
+        self.log("✅ Video gotov!")
+        self.btn_start.config(state=tk.NORMAL)
+        self.btn_open.config(state=tk.NORMAL)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = VideoApp(root)
+    root.mainloop()
